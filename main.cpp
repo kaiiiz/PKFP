@@ -2,72 +2,69 @@
 #include <string>
 #define RX_MAX 1000
 
+DigitalIn btn(PC_13);
 Serial pc(USBTX, USBRX);
 Serial test(PA_0, PA_1);
 Serial bt(PC_1, PC_0); // tx, rx
 DigitalOut out(PC_5);
 DigitalIn in(PC_6);
 
+enum BtProfile {
+    SPP,
+    HID
+};
 enum ShellMode {
     Normal,
-    Esc
+    Config
 };
+
+void serial_mode() {
+    bt.printf("$$$");
+    wait_us(100000);
+    bt.printf("S~,0\r\n");
+    wait_us(100000);
+    bt.printf("r,1\r\n");
+}
+
+void hid_mode() {
+    bt.printf("$$$");
+    wait_us(100000);
+    bt.printf("S~,6\r\n");
+    wait_us(100000);
+    bt.printf("r,1\r\n");
+}
+
 class Shell {
    public:
-    string read_input() {
-        std::string input;
-        bool done = false;
-        while (!done) {
-            if (pc.readable()) {
-                char c = pc.getc();
-                switch (mode) {
-                    case Normal:
-                        done = parse_normal_input(c, input);
-                        break;
-                    case Esc:
-                        parse_esc_input(c, input);
-                        break;
-                }
-            }
+    void main() {
+        char rxBuf[128];
+        bt.scanf("%s", rxBuf);
+        if (!strcmp(rxBuf, "hid")) {
+            hid_mode();
         }
-        return input;
-    }
-   private:
-    ShellMode mode = Normal;
-    bool parse_normal_input(char c, std::string &input) {
-        // CR
-        if (c == 13) {
-            pc.printf("\r\n");
-            return true;
-        }
-
-        // BS
-        if (c == 8) {
-            input.pop_back();
-            pc.putc(c);
-            pc.printf("\033[K");
-        }
-        // ESC
-        else if (c == 27) {
-            mode = Esc;
-        }
-        else {
-            input += c;
-            pc.putc(c);
-        }
-        return false;
-    }
-    void parse_esc_input(char c, std::string &input) {
-        // pc.printf("esc: %c", c);
-        if (c == 'D') {
-            // pc.printf("\033[1D");
-        }
-        else if (c == 'C') {
-            // pc.printf("\033[1C");
-        }
-        mode = Normal;
     }
 };
+
+bool btnIsPress() {
+    if (btn == 0) { // debounce
+        // press
+        int counter = 0xffff;
+        while (counter) {
+            if (btn == 0)  counter >>= 1;
+            else return false;
+            wait_us(1000);
+        }
+        // release
+        counter = 0xffff;
+        while (counter) {
+            if (btn == 1) counter >>= 1;
+            else counter = 0xffff;
+            wait_us(1000);
+        }
+        return true;
+    }
+    return false;
+}
 
 int main() {
     /* foot pedal control */
@@ -83,43 +80,35 @@ int main() {
     //     }
     // }
     Shell shell;
+    BtProfile profile = HID;
+    hid_mode();
 
     std::string input;
     
     test.baud(115200);
     pc.baud(115200);
+    bt.baud(115200);
 
     while (1) {
-        // reading
-        input = shell.read_input();
-        // reading done
-        test.printf("%s\r\n", input.c_str());
+        if (profile == HID) {
+            if (btnIsPress()) {
+                serial_mode();
+                profile = SPP;
+            }
+        }
+        else if (profile == SPP) {
+            shell.main();
+            profile = HID;
+        }
+        // pc config
+        // if (pc.readable()) {
+        //     input = shell.read_input();
+        //     if (input == "$$$") {
+        //         bt.printf("$$$");
+        //     }
+        //     else {
+        //         bt.printf("%s\r\n", input.c_str());
+        //     }
+        // }
     }
-
-    // int     i = 0;
-    // pc.baud(115200);
-    // bt.baud(115200);
-    // bt.printf("Ready to receive data over Bluetooth.\r\n\r\n");
-
-    // bt.putc('$');
-    // bt.putc('$');
-    // bt.putc('$');
-
-    // while(1) {
-    //     if (bt.readable()) {
-    //         pc.putc(bt.getc());
-    //     }
-    // }
-    // while (1) {
-    //     while (bt.readable()) {
-    //         bt.scanf("%s", rxBuf);
-    //         i = strlen(rxBuf);
-    //     }
- 
-    //     if (i > 0) {
-    //         bt.printf("Data you just send: %s\r\n", rxBuf);
-    //         pc.printf("Data received: %s\r\n", rxBuf);
-    //         i = 0;
-    //     }
-    // }
 }
