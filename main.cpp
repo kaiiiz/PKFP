@@ -1,21 +1,14 @@
 #include "mbed.h"
 #include <string>
-#define RX_MAX 1000
 
 DigitalIn btn(PC_13);
+DigitalIn fp(PC_5); // foot pedal
 Serial pc(USBTX, USBRX);
-Serial test(PA_0, PA_1);
 Serial bt(PC_1, PC_0); // tx, rx
-DigitalOut out(PC_5);
-DigitalIn in(PC_6);
 
 enum BtProfile {
     SPP,
     HID
-};
-enum ShellMode {
-    Normal,
-    Config
 };
 
 void serial_mode() {
@@ -38,9 +31,14 @@ class Shell {
    public:
     void main() {
         char rxBuf[128];
-        bt.scanf("%s", rxBuf);
-        if (!strcmp(rxBuf, "hid")) {
-            hid_mode();
+        while (bt.scanf("%s", rxBuf)) {
+            pc.printf("%s\r\n", rxBuf);
+            if (!strcmp(rxBuf, "hid")) {
+                bt.printf("reset hid profile...\r\n");
+                wait_us(100000);
+                hid_mode();
+                break;
+            }
         }
     }
 };
@@ -66,26 +64,33 @@ bool btnIsPress() {
     return false;
 }
 
+void fpHandler() {
+    if (fp == 1) { // debounce
+        // press
+        int counter = 0xffff;
+        while (counter) {
+            if (fp == 1)  counter >>= 1;
+            else return;
+            wait_us(1000);
+        }
+        // release
+        counter = 0xffff;
+        while (counter) {
+            if (fp == 0) counter >>= 1;
+            else counter = 0xffff;
+            wait_us(1000);
+        }
+        bt.putc('a');
+    }
+}
+
 int main() {
-    /* foot pedal control */
-    // int flag = 0;
-    // out = 0;
-    // while (1) {
-    //     if (flag == 0 && in == 1) {
-    //         out = !out;
-    //         flag = 1;
-    //     }
-    //     if (in == 0) {
-    //         flag = 0;
-    //     }
-    // }
     Shell shell;
     BtProfile profile = HID;
     hid_mode();
 
     std::string input;
     
-    test.baud(115200);
     pc.baud(115200);
     bt.baud(115200);
 
@@ -95,20 +100,11 @@ int main() {
                 serial_mode();
                 profile = SPP;
             }
+            fpHandler();
         }
         else if (profile == SPP) {
             shell.main();
             profile = HID;
         }
-        // pc config
-        // if (pc.readable()) {
-        //     input = shell.read_input();
-        //     if (input == "$$$") {
-        //         bt.printf("$$$");
-        //     }
-        //     else {
-        //         bt.printf("%s\r\n", input.c_str());
-        //     }
-        // }
     }
 }
