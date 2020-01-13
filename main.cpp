@@ -1,6 +1,7 @@
 #include "mbed.h"
 #include "utli.h"
-#include <unordered_map>
+#include <algorithm>
+#include <vector>
 #include <string>
 #include <queue>
 
@@ -12,8 +13,8 @@ Serial bt(PC_1, PC_0); // tx, rx
 
 class Shell {
    public:
-    std::unordered_map<string, int> keymap;
-    std::queue<std::pair<string, int>> buffer;
+    std::vector<std::pair<std::string, int>> keymap;
+    std::queue<std::pair<std::string, int>> buffer;
     int buffer_max = 3;
 
     Shell() {
@@ -24,24 +25,27 @@ class Shell {
     }
 
     void main() {
-        char rxBuf[128];
-        while (bt.scanf("%s", rxBuf)) {
-            pc.printf("%s\r\n", rxBuf);
-            if (!strcmp(rxBuf, "hid")) {
+        char cmd[128];
+        while (bt.scanf("%s", cmd)) {
+            pc.printf("%s\r\n", cmd);
+
+            // exit serial mode
+            if (!strcmp(cmd, "hid")) {
                 bt.printf("reset hid profile...\r\n");
                 wait_us(100000);
                 hid_mode(bt);
                 break;
             }
-            else if (!strcmp(rxBuf, "sb")) {
-                for (int i = 0; i < buffer_max; i++) {
-                    std::pair<std::string, int> k = buffer.front();
-                    bt.printf("key %d: %s %d\r\n", i + 1, k.first.c_str(), k.second);
-                    buffer.push(k);
-                    buffer.pop();
-                }
+
+            // Get Commands
+            if (!strcmp(cmd, "gb")) {
+                gb();
             }
-            else if (!strcmp(rxBuf, "help")) {
+            else if (!strcmp(cmd, "gk")) {
+                gk();
+            }
+            // Help
+            else if (!strcmp(cmd, "help")) {
                 help();
             }
             else {
@@ -54,37 +58,39 @@ class Shell {
     
    private:
     std::pair<string, int> get_key(std::string name) {
-        return make_pair(name, keymap[name]);
+        auto it = std::find_if(keymap.begin(), keymap.end(),
+            [&name](const std::pair<std::string, int>& key){ return key.first == name; });
+        if (it == keymap.end()) return make_pair("", 0);
+        else return *it;
     }
 
+    // Get Commands
+    void gb() {
+        for (int i = 0; i < buffer_max; i++) {
+            std::pair<std::string, int> k = buffer.front();
+            bt.printf("key %d: %s %d\r\n", i + 1, k.first.c_str(), k.second);
+            buffer.push(k);
+            buffer.pop();
+        }
+    }
+    void gk() {
+        bt.printf("Key Name\t\t\tHID Code\r\n");
+        for (auto key : keymap) {
+            bt.printf("%s\t\t\t%d\r\n", key.first.c_str(), key.second);
+        }
+    }
+
+    // Help
     void help() {
         bt.printf("Usage: \r\n");
         bt.printf("\r\n");
-        bt.printf("sb: show key buffer\r\n");
+        bt.printf("Get Commands:\r\n");
+        bt.printf("gb: get current key buffer\r\n");
+        bt.printf("gk: get avaliable key\r\n");
+        bt.printf("\r\n");
         bt.printf("hid: reset profile to hid\r\n");
     }
 };
-
-bool btnIsPress() {
-    if (btn == 0) { // debounce
-        // press
-        int counter = 0xffff;
-        while (counter) {
-            if (btn == 0)  counter >>= 1;
-            else return false;
-            wait_us(1000);
-        }
-        // release
-        counter = 0xffff;
-        while (counter) {
-            if (btn == 1) counter >>= 1;
-            else counter = 0xffff;
-            wait_us(1000);
-        }
-        return true;
-    }
-    return false;
-}
 
 void fpHandler(std::queue<std::pair<std::string, int>>& buffer) {
     bool long_press = false;
@@ -139,8 +145,8 @@ void fpHandler(std::queue<std::pair<std::string, int>>& buffer) {
 }
 
 int main() {
-    pc.baud(115200);
-    bt.baud(115200);
+    pc.baud(9600);
+    bt.baud(9600);
 
     Shell shell;
     BtProfile profile = SPP;
@@ -148,11 +154,35 @@ int main() {
 
     while (1) {
         if (profile == HID) {
-            if (btnIsPress()) {
-                serial_mode(bt);
-                profile = SPP;
+            bool connect = false;
+            std::string log;
+            while (1) {
+                if (bt.readable()) {
+                    log += bt.getc();
+                }
+
+                if (!connect && log.find("ESC%CONNECT") != std::string::npos) {
+                    connect = true;
+                    log.erase(log.begin(), log.begin() + log.find("ESC%CONNECT"));
+                    pc.printf("connection %s\r\n", log.c_str());
+                }
+
+                if (connect && log.find("ESC%DISCONNECT") != std::string::npos) {
+                    connect = false;
+                    log.clear();
+                    pc.printf("disconn\r\n");
+                }
+
+                if (!connect && btnIsPress(btn)) {
+                    serial_mode(bt);
+                    profile = SPP;
+                    break;
+                }
+
+                if (connect) {
+                    fpHandler(shell.buffer);
+                }
             }
-            fpHandler(shell.buffer);
         }
         else if (profile == SPP) {
             shell.main();
