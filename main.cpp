@@ -1,8 +1,8 @@
 #include "mbed.h"
-#include "keymap.h"
+#include "utli.h"
+#include <unordered_map>
 #include <string>
 #include <queue>
-#include <unordered_map>
 
 DigitalIn btn(PC_13);
 DigitalIn fp(PC_5); // foot pedal
@@ -10,38 +10,17 @@ DigitalOut led(LED1);
 Serial pc(USBTX, USBRX);
 Serial bt(PC_1, PC_0); // tx, rx
 
-enum BtProfile {
-    SPP,
-    HID
-};
-
-void serial_mode() {
-    bt.printf("$$$");
-    wait_us(100000);
-    bt.printf("S~,0\r\n");
-    wait_us(100000);
-    bt.printf("r,1\r\n");
-}
-
-void hid_mode() {
-    bt.printf("$$$");
-    wait_us(100000);
-    bt.printf("S~,6\r\n");
-    wait_us(100000);
-    bt.printf("r,1\r\n");
-}
-
 class Shell {
    public:
     std::unordered_map<string, int> keymap;
-    std::queue<int> buffer;
+    std::queue<std::pair<string, int>> buffer;
     int buffer_max = 3;
 
     Shell() {
         init_keymap(keymap);
-        buffer.push(keymap["a"]);
-        buffer.push(keymap["b"]);
-        buffer.push(keymap["Esc"]);
+        buffer.push(get_key("a"));
+        buffer.push(get_key("b"));
+        buffer.push(get_key("Esc"));
     }
 
     void main() {
@@ -51,20 +30,37 @@ class Shell {
             if (!strcmp(rxBuf, "hid")) {
                 bt.printf("reset hid profile...\r\n");
                 wait_us(100000);
-                hid_mode();
+                hid_mode(bt);
                 break;
             }
+            else if (!strcmp(rxBuf, "sb")) {
+                for (int i = 0; i < buffer_max; i++) {
+                    std::pair<std::string, int> k = buffer.front();
+                    bt.printf("key %d: %s %d\r\n", i + 1, k.first.c_str(), k.second);
+                    buffer.push(k);
+                    buffer.pop();
+                }
+            }
             else if (!strcmp(rxBuf, "help")) {
+                help();
+            }
+            else {
+                bt.printf("Unrecognized command.\r\n");
+                bt.printf("\r\n");
                 help();
             }
         }
     }
     
    private:
+    std::pair<string, int> get_key(std::string name) {
+        return make_pair(name, keymap[name]);
+    }
+
     void help() {
-        bt.printf("usage: \r\n");
+        bt.printf("Usage: \r\n");
         bt.printf("\r\n");
-        bt.printf("show buffer: show key buffer\r\n");
+        bt.printf("sb: show key buffer\r\n");
         bt.printf("hid: reset profile to hid\r\n");
     }
 };
@@ -90,7 +86,7 @@ bool btnIsPress() {
     return false;
 }
 
-void fpHandler(std::queue<int>& buffer) {
+void fpHandler(std::queue<std::pair<std::string, int>>& buffer) {
     bool long_press = false;
     if (fp == 1) { // debounce
         // press
@@ -105,7 +101,7 @@ void fpHandler(std::queue<int>& buffer) {
             wait_us(1000);
         }
         // long press check
-        counter = 0xfffff;
+        counter = 0xff;
         while (counter) {
             if (fp == 0) {
                 long_press = false;
@@ -135,7 +131,8 @@ void fpHandler(std::queue<int>& buffer) {
             led = 1;
         }
         else {
-            bt.putc(buffer.front());
+            pc.printf("%s %d\r\n", buffer.front().first.c_str(), buffer.front().second);
+            bt.putc(buffer.front().second);
             led = 0;
         }
     }
@@ -147,12 +144,12 @@ int main() {
 
     Shell shell;
     BtProfile profile = SPP;
-    serial_mode();
+    serial_mode(bt);
 
     while (1) {
         if (profile == HID) {
             if (btnIsPress()) {
-                serial_mode();
+                serial_mode(bt);
                 profile = SPP;
             }
             fpHandler(shell.buffer);
