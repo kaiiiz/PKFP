@@ -6,7 +6,7 @@
 #include <queue>
 
 DigitalIn btn(PC_13);
-DigitalIn fp(PC_5); // foot pedal
+FootPedal fp(PC_5);
 DigitalOut led(LED1);
 Serial pc(USBTX, USBRX);
 Serial bt(PC_1, PC_0); // tx, rx
@@ -28,7 +28,7 @@ class Controller {
         std::string log;
         BtStatus status = Disconnect;
         while (1) {
-            if (btnIsPress(btn)) {
+            if (modeSwitch(btn)) {
                 bt.printf("\r\nreset hid profile...\r\n");
                 wait_us(100000);
                 hid_mode(bt);
@@ -102,7 +102,7 @@ class Controller {
                         status = Connect;
                         log.clear();
                     }
-                    if (btnIsPress(btn)) {
+                    if (modeSwitch(btn)) {
                         serial_mode(bt);
                         return;
                     }
@@ -154,53 +154,25 @@ class Controller {
         }
     }
 
+    unsigned char prev_cmd = 0;
     void fpHandler() {
-        bool long_press = false;
-        if (fp == 1) { // debounce
-            // press
-            int counter = 0xffff;
-            while (counter) {
-                if (fp == 1) counter >>= 1;
-                else return;
-                wait_us(1000);
-            }
-            // long press check
-            counter = 0xff;
-            while (counter) {
-                if (fp == 0) {
-                    long_press = false;
+        // only trigger when release foot pedal
+        if (prev_cmd && fp.CMD == 0) {
+            auto front = this->buffer.front();
+            switch (prev_cmd) {
+                case 1: // short press
+                    pc.printf("%s %d\r\n", front.first.c_str(), front.second);
+                    bt.putc(front.second);
+                    led = 0;
                     break;
-                }
-                else {
-                    counter >>= 1;
-                    long_press = true;
-                }
-                wait_us(100000);
-            }
-            // release
-            counter = 0xffff;
-            while (counter) {
-                if (fp == 0) {
-                    counter >>= 1;
-                }
-                else {
-                    counter = 0xffff;
-                }
-                wait_us(1000);
-            }
-
-            if (long_press) {
-                this->buffer.push(this->buffer.front());
-                this->buffer.pop();
-                led = 1;
-            }
-            else {
-                auto front = this->buffer.front();
-                pc.printf("%s %d\r\n", front.first.c_str(), front.second);
-                bt.putc(front.second);
-                led = 0;
+                case 2: // long press
+                    this->buffer.push(front);
+                    this->buffer.pop();
+                    led = 1;
+                    break;
             }
         }
+        prev_cmd = fp.CMD;
     }
 
     // Get Commands

@@ -49,7 +49,7 @@ void hid_mode(Serial& bt) {
     bt.printf("r,1\r\n");
 }
 
-bool btnIsPress(DigitalIn& btn) {
+bool modeSwitch(DigitalIn& btn) {
     if (btn == 0) { // debounce
         // press
         int counter = 0xffff;
@@ -68,4 +68,47 @@ bool btnIsPress(DigitalIn& btn) {
         return true;
     }
     return false;
+}
+
+namespace mbed {
+    class FootPedal {
+       public:
+        unsigned char CMD; // FP has been pressed
+        unsigned char STAT; // FP is being pressing
+        FootPedal(PinName pin): _fp(pin) {
+            _fp.mode(PullDown);
+            CMD = STAT = 0;
+            _tick.attach(callback(this, &FootPedal::sample), SAMPLE_PERIOD);
+        };
+       private:
+        float SAMPLE_PERIOD = 0.001; // s
+        int SHORT_PRESS_THOLD = 10;
+        int LONG_PRESS_THOLD = 500;
+        int debounce_cntr;
+        void sample() {
+            int press = _fp;
+            
+            if (press) {
+                debounce_cntr++;
+                STAT = 1;
+            }
+            else {
+                STAT = 0;
+                debounce_cntr = 0;
+            }
+
+            if (debounce_cntr >= SHORT_PRESS_THOLD && debounce_cntr < LONG_PRESS_THOLD) {
+                CMD = 1;
+            }
+            else if (debounce_cntr >= LONG_PRESS_THOLD) {
+                debounce_cntr = LONG_PRESS_THOLD;
+                CMD = 2;
+            }
+            else {
+                CMD = 0;
+            }
+        }
+        DigitalIn _fp;
+        Ticker _tick;
+    };
 }
