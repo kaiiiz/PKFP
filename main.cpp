@@ -162,12 +162,15 @@ class Controller {
         pc.printf("%s\r\n", cmd_str.c_str());
         // tokenize
         std::vector<std::string> cmd;
-        while (cmd_str.find(" ") != std::string::npos) {
-            size_t pos = cmd_str.find(" ");
-            cmd.push_back(cmd_str.substr(0, pos));
-            cmd_str = cmd_str.substr(pos + 1);
+        while (std::find_if(cmd_str.begin(), cmd_str.end(), std::isalnum) != cmd_str.end()) {
+            auto beg = std::find_if(cmd_str.begin(), cmd_str.end(), std::isalnum);
+            auto end = std::find_if(beg, cmd_str.end(), std::isblank);
+            auto beg_pos = beg - cmd_str.begin();
+            auto end_pos = end - cmd_str.begin();
+            cmd.push_back(cmd_str.substr(beg_pos, end_pos));
+            if (end_pos == cmd_str.size()) break;
+            cmd_str = cmd_str.substr(end_pos + 1);
         }
-        cmd.push_back(cmd_str);
 
         // Set Commands
         if (cmd[0] == "bsize" && cmd.size() == 2) {
@@ -178,6 +181,18 @@ class Controller {
         }
         else if (cmd[0] == "pushb" && cmd.size() == 2) {
             pushb(cmd[1]);
+        }
+        else if (cmd[0] == "popf" && cmd.size() == 1) {
+            popf();
+        }
+        else if (cmd[0] == "popb" && cmd.size() == 1) {
+            popb();
+        }
+        else if (cmd[0] == "del" && cmd.size() == 2) {
+            del(cmd[1]);
+        }
+        else if (cmd[0] == "insert" && cmd.size() == 3) {
+            insert(cmd[1], cmd[2]);
         }
         // Get Commands
         else if (cmd[0] == "gb" && cmd.size() == 1) {
@@ -265,6 +280,52 @@ class Controller {
         this->buffer.push_back(key);
         gb();
     }
+    void popf() {
+        if (this->buffer.size() > 0) {
+            this->buffer.pop_front();
+        }
+        gb();
+    }
+    void popb() {
+        if (this->buffer.size() > 0) {
+            this->buffer.pop_back();
+        }
+        gb();
+    }
+    void del(std::string arg) {
+        for (char c : arg) {
+            if (!std::isdigit(c)) {
+                bt.printf("Argument must be numeric!\r\n");
+                return;
+            }
+        }
+        int idx = stoi(arg, nullptr, 10) - 1;
+        if (idx > this->buffer.size()) {
+            bt.printf("Key-id must smaller than size of buffer!\r\n");
+            return;
+        }
+        this->buffer.erase(this->buffer.begin() + idx);
+        gb();
+    }
+    void insert(std::string keyname, std::string keyid) {
+        for (char c : keyid) {
+            if (!std::isdigit(c)) {
+                bt.printf("Argument must be numeric!\r\n");
+                return;
+            }
+        }
+        int idx = stoi(keyid, nullptr, 10) - 1;
+        auto key = get_key(keyname);
+        if (key.second == -1) {
+            bt.printf("Unsupported key name!\r\n");
+            return;
+        }
+        if (this->buffer.size() == this->buffer_max) {
+            this->buffer.pop_back();
+        }
+        this->buffer.insert(this->buffer.begin() + idx, key);
+        gb();
+    }
 
     // Get Commands
     void gb() {
@@ -297,6 +358,10 @@ class Controller {
         bt.printf("bsize <int>: set max key buffer size\r\n");
         bt.printf("pushf <key-name>: push key to front of buffer\r\n");
         bt.printf("pushb <key-name>: push key to back of buffer\r\n");
+        bt.printf("popf: pop key from front of buffer\r\n");
+        bt.printf("popb: pop key from back of buffer\r\n");
+        bt.printf("del <key-id>: delete key in buffer using key-id\r\n");
+        bt.printf("insert <key-name> <key-id>: insert key to position <key-id>\r\n");
         bt.printf("\r\n");
         bt.printf("Get Commands:\r\n");
         bt.printf("gb: get current key buffer\r\n");
