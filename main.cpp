@@ -25,33 +25,51 @@ class Shell {
     }
 
     void main() {
-        char cmd[128];
-        while (bt.scanf("%s", cmd)) {
-            pc.printf("%s\r\n", cmd);
-
-            // exit serial mode
-            if (!strcmp(cmd, "hid")) {
-                bt.printf("reset hid profile...\r\n");
-                wait_us(100000);
-                hid_mode(bt);
-                break;
-            }
-
-            // Get Commands
-            if (!strcmp(cmd, "gb")) {
-                gb();
-            }
-            else if (!strcmp(cmd, "gk")) {
-                gk();
-            }
-            // Help
-            else if (!strcmp(cmd, "help")) {
-                help();
-            }
-            else {
-                bt.printf("Unrecognized command.\r\n");
-                bt.printf("\r\n");
-                help();
+        std::string log;
+        BtSerialStatus status = Disconnect;
+        while (1) {
+            switch (status) {
+                case Connect:
+                    if (bt.readable()) {
+                        char c = bt.getc();
+                        if (c == 10) status = Parse; // newline
+                        else log += c;
+                    }
+                    if (log.find("ESC%DISCONNECT") != std::string::npos) {
+                        pc.printf("%s\r\n", log.c_str());
+                        status = Disconnect;
+                        log.clear();
+                    }
+                    break;
+                case Parse:
+                    if (log == "hid") {
+                        bt.printf("reset hid profile...\r\n");
+                        wait_us(100000);
+                        hid_mode(bt);
+                        return;
+                    }
+                    else {
+                        this->cmdHandler(log);
+                        status = Connect;
+                        log.clear();
+                    }
+                    break;
+                case Flush:
+                    this->flush_input();
+                    bt.printf("Shell ready! Send \"help\" to get supported commands list!");
+                    status = Connect;
+                    log.clear();
+                    break;
+                case Disconnect:
+                    if (bt.readable()) {
+                        log += bt.getc();
+                    }
+                    if (log.find("ESC%CONNECT") != std::string::npos) {
+                        pc.printf("%s\r\n", log.c_str());
+                        status = Flush;
+                        log.clear();
+                    }
+                    break;
             }
         }
     }
@@ -62,6 +80,39 @@ class Shell {
             [&name](const std::pair<std::string, int>& key){ return key.first == name; });
         if (it == keymap.end()) return make_pair("", 0);
         else return *it;
+    }
+
+    void flush_input() {
+        int flushCntr = 100;
+        while (flushCntr) {
+            if (bt.readable()) {
+                bt.getc();
+                flushCntr = 100;
+            }
+            if (!bt.readable()) {
+                flushCntr--;
+            }
+        }
+    }
+
+    void cmdHandler(string cmd) {
+        // Get Commands
+        if (cmd == "gb") {
+            gb();
+        }
+        else if (cmd == "gk") {
+            gk();
+        }
+        // Help
+        else if (cmd == "help") {
+            help();
+        }
+        // Other commands
+        else {
+            bt.printf("Unrecognized command.\r\n");
+            bt.printf("\r\n");
+            help();
+        }
     }
 
     // Get Commands

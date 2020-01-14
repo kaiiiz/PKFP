@@ -7,6 +7,13 @@ enum BtProfile {
     HID
 };
 
+enum BtSerialStatus {
+    Connect,
+    Flush,
+    Parse,
+    Disconnect,
+};
+
 void init_keymap(std::vector<std::pair<std::string, int>>& map) {
     map = {
         make_pair("Insert",     1),
