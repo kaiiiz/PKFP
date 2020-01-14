@@ -7,7 +7,7 @@ enum BtProfile {
     HID
 };
 
-enum BtSerialStatus {
+enum BtStatus {
     Connect,
     Flush,
     Parse,

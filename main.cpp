@@ -11,23 +11,29 @@ DigitalOut led(LED1);
 Serial pc(USBTX, USBRX);
 Serial bt(PC_1, PC_0); // tx, rx
 
-class Shell {
+class Controller {
    public:
     std::vector<std::pair<std::string, int>> keymap;
     std::queue<std::pair<std::string, int>> buffer;
     int buffer_max = 3;
 
-    Shell() {
+    Controller() {
         init_keymap(keymap);
         buffer.push(get_key("a"));
         buffer.push(get_key("b"));
         buffer.push(get_key("Esc"));
     }
 
-    void main() {
+    void spp() {
         std::string log;
-        BtSerialStatus status = Disconnect;
+        BtStatus status = Disconnect;
         while (1) {
+            if (btnIsPress(btn)) {
+                bt.printf("\r\nreset hid profile...\r\n");
+                wait_us(100000);
+                hid_mode(bt);
+                return;
+            }
             switch (status) {
                 case Connect:
                     if (bt.readable()) {
@@ -69,6 +75,39 @@ class Shell {
                         status = Flush;
                         log.clear();
                     }
+                    break;
+            }
+        }
+    }
+
+    void hid() {
+        std::string log;
+        BtStatus status = Disconnect;
+        while (1) {
+            if (bt.readable()) {
+                log += bt.getc();
+            }
+            switch (status) {
+                case Connect:
+                    if (log.find("ESC%DISCONNECT") != std::string::npos) {
+                        pc.printf("%s\r\n", log.c_str());
+                        status = Disconnect;
+                        log.clear();
+                    }
+                    this->fpHandler();
+                    break;
+                case Disconnect:
+                    if (log.find("ESC%CONNECT") != std::string::npos) {
+                        pc.printf("%s\r\n", log.c_str());
+                        status = Connect;
+                        log.clear();
+                    }
+                    if (btnIsPress(btn)) {
+                        serial_mode(bt);
+                        return;
+                    }
+                    break;
+                default:
                     break;
             }
         }
@@ -115,13 +154,62 @@ class Shell {
         }
     }
 
+    void fpHandler() {
+        bool long_press = false;
+        if (fp == 1) { // debounce
+            // press
+            int counter = 0xffff;
+            while (counter) {
+                if (fp == 1) counter >>= 1;
+                else return;
+                wait_us(1000);
+            }
+            // long press check
+            counter = 0xff;
+            while (counter) {
+                if (fp == 0) {
+                    long_press = false;
+                    break;
+                }
+                else {
+                    counter >>= 1;
+                    long_press = true;
+                }
+                wait_us(100000);
+            }
+            // release
+            counter = 0xffff;
+            while (counter) {
+                if (fp == 0) {
+                    counter >>= 1;
+                }
+                else {
+                    counter = 0xffff;
+                }
+                wait_us(1000);
+            }
+
+            if (long_press) {
+                this->buffer.push(this->buffer.front());
+                this->buffer.pop();
+                led = 1;
+            }
+            else {
+                auto front = this->buffer.front();
+                pc.printf("%s %d\r\n", front.first.c_str(), front.second);
+                bt.putc(front.second);
+                led = 0;
+            }
+        }
+    }
+
     // Get Commands
     void gb() {
         for (int i = 0; i < buffer_max; i++) {
-            std::pair<std::string, int> k = buffer.front();
+            auto k = this->buffer.front();
             bt.printf("key %d: %s %d\r\n", i + 1, k.first.c_str(), k.second);
-            buffer.push(k);
-            buffer.pop();
+            this->buffer.push(k);
+            this->buffer.pop();
         }
     }
     void gk() {
@@ -143,100 +231,21 @@ class Shell {
     }
 };
 
-void fpHandler(std::queue<std::pair<std::string, int>>& buffer) {
-    bool long_press = false;
-    if (fp == 1) { // debounce
-        // press
-        int counter = 0xffff;
-        while (counter) {
-            if (fp == 1) {
-                counter >>= 1;
-            }
-            else {
-                return;
-            }
-            wait_us(1000);
-        }
-        // long press check
-        counter = 0xff;
-        while (counter) {
-            if (fp == 0) {
-                long_press = false;
-                break;
-            }
-            else {
-                counter >>= 1;
-                long_press = true;
-            }
-            wait_us(100000);
-        }
-        // release
-        counter = 0xffff;
-        while (counter) {
-            if (fp == 0) {
-                counter >>= 1;
-            }
-            else {
-                counter = 0xffff;
-            }
-            wait_us(1000);
-        }
-
-        if (long_press) {
-            buffer.push(buffer.front());
-            buffer.pop();
-            led = 1;
-        }
-        else {
-            pc.printf("%s %d\r\n", buffer.front().first.c_str(), buffer.front().second);
-            bt.putc(buffer.front().second);
-            led = 0;
-        }
-    }
-}
-
 int main() {
     pc.baud(9600);
     bt.baud(9600);
 
-    Shell shell;
+    Controller ctlr;
     BtProfile profile = SPP;
     serial_mode(bt);
 
     while (1) {
         if (profile == HID) {
-            bool connect = false;
-            std::string log;
-            while (1) {
-                if (bt.readable()) {
-                    log += bt.getc();
-                }
-
-                if (!connect && log.find("ESC%CONNECT") != std::string::npos) {
-                    connect = true;
-                    log.erase(log.begin(), log.begin() + log.find("ESC%CONNECT"));
-                    pc.printf("connection %s\r\n", log.c_str());
-                }
-
-                if (connect && log.find("ESC%DISCONNECT") != std::string::npos) {
-                    connect = false;
-                    log.clear();
-                    pc.printf("disconn\r\n");
-                }
-
-                if (!connect && btnIsPress(btn)) {
-                    serial_mode(bt);
-                    profile = SPP;
-                    break;
-                }
-
-                if (connect) {
-                    fpHandler(shell.buffer);
-                }
-            }
+            ctlr.hid();
+            profile = SPP;
         }
         else if (profile == SPP) {
-            shell.main();
+            ctlr.spp();
             profile = HID;
         }
     }
