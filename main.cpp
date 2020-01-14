@@ -158,17 +158,33 @@ class Controller {
         }
     }
 
-    void cmdHandler(string cmd) {
-        pc.printf("%s\r\n", cmd.c_str());
+    void cmdHandler(string cmd_str) {
+        pc.printf("%s\r\n", cmd_str.c_str());
+        // tokenize
+        std::vector<std::string> cmd;
+        while (cmd_str.find(" ") != std::string::npos) {
+            size_t pos = cmd_str.find(" ");
+            cmd.push_back(cmd_str.substr(0, pos));
+            cmd_str = cmd_str.substr(pos + 1);
+        }
+        cmd.push_back(cmd_str);
+
+        // Set Commands
+        if (cmd[0] == "bsize" && cmd.size() == 2) {
+            sb(cmd[1]);
+        }
         // Get Commands
-        if (cmd == "gb") {
+        else if (cmd[0] == "gb" && cmd.size() == 1) {
             gb();
         }
-        else if (cmd == "gk") {
+        else if (cmd[0] == "gbsize" && cmd.size() == 1) {
+            gbsize();
+        }
+        else if (cmd[0] == "gk" && cmd.size() == 1) {
             gk();
         }
         // Help
-        else if (cmd == "help") {
+        else if (cmd[0] == "help" && cmd.size() == 1) {
             help();
         }
         // Other commands
@@ -201,14 +217,38 @@ class Controller {
         prev_cmd = fp.CMD;
     }
 
+    // Set Commands
+    void sb(std::string arg) {
+        for (char c : arg) {
+            if (!std::isdigit(c)) {
+                bt.printf("Argument must be numeric!\r\n");
+                return;
+            }
+        }
+        int bsize = stoi(arg, nullptr, 10);
+        if (bsize < this->buffer.size()) {
+            int diff = this->buffer.size() - bsize;
+            while(diff--) {
+                this->buffer.push(this->buffer.front());
+                this->buffer.pop();
+                this->buffer.pop();
+            }
+        }
+        this->buffer_max = bsize;
+        bt.printf("Set buffer size to %d\r\n", bsize);
+    }
+
     // Get Commands
     void gb() {
-        for (int i = 0; i < buffer_max; i++) {
+        for (int i = 0; i < this->buffer.size(); i++) {
             auto k = this->buffer.front();
             bt.printf("key %d: %s %d\r\n", i + 1, k.first.c_str(), k.second);
             this->buffer.push(k);
             this->buffer.pop();
         }
+    }
+    void gbsize() {
+        bt.printf("max key buffer size is %d\r\n", this->buffer_max);
     }
     void gk() {
         bt.printf("Control key:\r\n");
@@ -225,8 +265,12 @@ class Controller {
     void help() {
         bt.printf("Usage: \r\n");
         bt.printf("\r\n");
+        bt.printf("Set Commands:\r\n");
+        bt.printf("bsize <int>: set max key buffer size\r\n");
+        bt.printf("\r\n");
         bt.printf("Get Commands:\r\n");
         bt.printf("gb: get current key buffer\r\n");
+        bt.printf("gbsize: get max key buffer size\r\n");
         bt.printf("gk: get avaliable key\r\n");
         bt.printf("\r\n");
         bt.printf("Settings:\r\n");
