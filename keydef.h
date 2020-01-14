@@ -33,14 +33,6 @@ std::vector<std::pair<std::string, int>> control_keymap = {
     std::make_pair("ScrollLk",      29),
     std::make_pair("BrkPause",      30),
     std::make_pair("NumLock",       31),
-    std::make_pair("LCtrl",         0xE0),
-    std::make_pair("LShift",        0xE1),
-    std::make_pair("LAlt",          0xE2),
-    std::make_pair("LGUI",          0xE3),
-    std::make_pair("RCtrl",         0xE4),
-    std::make_pair("RShift",        0xE5),
-    std::make_pair("RAlt",          0xE6),
-    std::make_pair("RGUI",          0xE7),
 };
 
 std::vector<std::pair<std::string, int>> ascii_keymap = {

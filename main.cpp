@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <vector>
 #include <string>
-#include <queue>
+#include <deque>
 
 #ifndef keydef
 #define keydef
@@ -31,15 +31,15 @@ Serial bt(PC_1, PC_0); // tx, rx
 class Controller {
    public:
     std::unordered_map<std::string, int> keymap;
-    std::queue<std::pair<std::string, int>> buffer;
+    std::deque<std::pair<std::string, int>> buffer;
     int buffer_max = 3;
 
     Controller() {
         keymap.insert(control_keymap.begin(), control_keymap.end());
         keymap.insert(ascii_keymap.begin(), ascii_keymap.end());
-        buffer.push(get_key("a"));
-        buffer.push(get_key("b"));
-        buffer.push(get_key("Esc"));
+        buffer.push_back(get_key("a"));
+        buffer.push_back(get_key("b"));
+        buffer.push_back(get_key("Esc"));
     }
 
     void spp() {
@@ -87,7 +87,7 @@ class Controller {
                     log.clear();
                     break;
                 case Disconnect:
-                    max7219.show("noConn");
+                    max7219.show("sppidle");
                     if (bt.readable()) {
                         log += bt.getc();
                     }
@@ -118,7 +118,7 @@ class Controller {
                     this->fpHandler();
                     break;
                 case Disconnect:
-                    max7219.show("noConn");
+                    max7219.show("hididle");
                     if (log.find("ESC%CONNECT") != std::string::npos) {
                         pc.printf("%s\r\n", log.c_str());
                         status = Connect;
@@ -171,7 +171,13 @@ class Controller {
 
         // Set Commands
         if (cmd[0] == "bsize" && cmd.size() == 2) {
-            sb(cmd[1]);
+            bsize(cmd[1]);
+        }
+        else if (cmd[0] == "pushf" && cmd.size() == 2) {
+            pushf(cmd[1]);
+        }
+        else if (cmd[0] == "pushb" && cmd.size() == 2) {
+            pushb(cmd[1]);
         }
         // Get Commands
         else if (cmd[0] == "gb" && cmd.size() == 1) {
@@ -208,8 +214,8 @@ class Controller {
                     led = 0;
                     break;
                 case 2: // long press
-                    this->buffer.push(front);
-                    this->buffer.pop();
+                    this->buffer.push_back(front);
+                    this->buffer.pop_front();
                     led = 1;
                     break;
             }
@@ -218,7 +224,7 @@ class Controller {
     }
 
     // Set Commands
-    void sb(std::string arg) {
+    void bsize(std::string arg) {
         for (char c : arg) {
             if (!std::isdigit(c)) {
                 bt.printf("Argument must be numeric!\r\n");
@@ -229,13 +235,35 @@ class Controller {
         if (bsize < this->buffer.size()) {
             int diff = this->buffer.size() - bsize;
             while(diff--) {
-                this->buffer.push(this->buffer.front());
-                this->buffer.pop();
-                this->buffer.pop();
+                this->buffer.pop_back();
             }
         }
         this->buffer_max = bsize;
         bt.printf("Set buffer size to %d\r\n", bsize);
+    }
+    void pushf(std::string arg) {
+        auto key = get_key(arg);
+        if (key.second == -1) {
+            bt.printf("Unsupported key name!\r\n");
+            return;
+        }
+        if (this->buffer_max == this->buffer.size()) {
+            this->buffer.pop_back();
+        }
+        this->buffer.push_front(key);
+        gb();
+    }
+    void pushb(std::string arg) {
+        auto key = get_key(arg);
+        if (key.second == -1) {
+            bt.printf("Unsupported key name!\r\n");
+            return;
+        }
+        if (this->buffer_max == this->buffer.size()) {
+            this->buffer.pop_front();
+        }
+        this->buffer.push_back(key);
+        gb();
     }
 
     // Get Commands
@@ -243,8 +271,8 @@ class Controller {
         for (int i = 0; i < this->buffer.size(); i++) {
             auto k = this->buffer.front();
             bt.printf("key %d: %s %d\r\n", i + 1, k.first.c_str(), k.second);
-            this->buffer.push(k);
-            this->buffer.pop();
+            this->buffer.push_back(k);
+            this->buffer.pop_front();
         }
     }
     void gbsize() {
@@ -267,6 +295,8 @@ class Controller {
         bt.printf("\r\n");
         bt.printf("Set Commands:\r\n");
         bt.printf("bsize <int>: set max key buffer size\r\n");
+        bt.printf("pushf <key-name>: push key to front of buffer\r\n");
+        bt.printf("pushb <key-name>: push key to back of buffer\r\n");
         bt.printf("\r\n");
         bt.printf("Get Commands:\r\n");
         bt.printf("gb: get current key buffer\r\n");
