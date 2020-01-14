@@ -5,6 +5,11 @@
 #include <string>
 #include <queue>
 
+#ifndef keydef
+#define keydef
+#include "keydef.h"
+#endif
+
 DigitalOut led(LED1);
 Serial pc(USBTX, USBRX);
 
@@ -25,12 +30,13 @@ Serial bt(PC_1, PC_0); // tx, rx
 
 class Controller {
    public:
-    std::vector<std::pair<std::string, int>> keymap;
+    std::unordered_map<std::string, int> keymap;
     std::queue<std::pair<std::string, int>> buffer;
     int buffer_max = 3;
 
     Controller() {
-        init_keymap(keymap);
+        keymap.insert(control_keymap.begin(), control_keymap.end());
+        keymap.insert(ascii_keymap.begin(), ascii_keymap.end());
         buffer.push(get_key("a"));
         buffer.push(get_key("b"));
         buffer.push(get_key("Esc"));
@@ -131,10 +137,12 @@ class Controller {
     
    private:
     std::pair<string, int> get_key(std::string name) {
-        auto it = std::find_if(keymap.begin(), keymap.end(),
-            [&name](const std::pair<std::string, int>& key){ return key.first == name; });
-        if (it == keymap.end()) return make_pair("", 0);
-        else return *it;
+        if (keymap.count(name) > 0) {
+            return make_pair(name, keymap[name]);
+        }
+        else {
+            return make_pair(name, -1);
+        }
     }
 
     void flush_input() {
@@ -203,9 +211,13 @@ class Controller {
         }
     }
     void gk() {
-        bt.printf("Key Name\t\t\tHID Code\r\n");
-        for (auto key : keymap) {
-            bt.printf("%s\t\t\t%d\r\n", key.first.c_str(), key.second);
+        bt.printf("Control key:\r\n");
+        for (auto key : control_keymap) {
+            bt.printf("%s %d\r\n", key.first.c_str(), key.second);
+        }
+        bt.printf("\r\nPrintable ASCII key:\r\n");
+        for (auto key : ascii_keymap) {
+            bt.printf("%s %d\r\n", key.first.c_str(), key.second);
         }
     }
 
@@ -217,6 +229,7 @@ class Controller {
         bt.printf("gb: get current key buffer\r\n");
         bt.printf("gk: get avaliable key\r\n");
         bt.printf("\r\n");
+        bt.printf("Settings:\r\n");
         bt.printf("hid: reset profile to hid\r\n");
     }
 };
