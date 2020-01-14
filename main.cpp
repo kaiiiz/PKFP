@@ -5,10 +5,22 @@
 #include <string>
 #include <queue>
 
-DigitalIn btn(PC_13);
-FootPedal fp(PC_5);
 DigitalOut led(LED1);
 Serial pc(USBTX, USBRX);
+
+// MAX7219
+#define DIN_PIN PA_5
+#define CS_PIN PA_6
+#define CLK_PIN PA_7
+MAX7219 max7219(DIN_PIN, CS_PIN, CLK_PIN);
+
+// Switch Button
+DigitalIn btn(PC_13);
+
+// Foot Pedal
+FootPedal fp(PC_5);
+
+// Bluetooth Module
 Serial bt(PC_1, PC_0); // tx, rx
 
 class Controller {
@@ -36,6 +48,7 @@ class Controller {
             }
             switch (status) {
                 case Connect:
+                    max7219.show("config");
                     if (bt.readable()) {
                         char c = bt.getc();
                         if (c == 10) status = Parse; // newline
@@ -56,17 +69,19 @@ class Controller {
                     }
                     else {
                         this->cmdHandler(log);
+                        this->flush_input();
                         status = Connect;
                         log.clear();
                     }
                     break;
                 case Flush:
                     this->flush_input();
-                    bt.printf("Shell ready! Send \"help\" to get supported commands list!");
+                    bt.printf("Shell ready! Send \"help\" to get supported commands list!\r\n");
                     status = Connect;
                     log.clear();
                     break;
                 case Disconnect:
+                    max7219.show("noConn");
                     if (bt.readable()) {
                         log += bt.getc();
                     }
@@ -97,6 +112,7 @@ class Controller {
                     this->fpHandler();
                     break;
                 case Disconnect:
+                    max7219.show("noConn");
                     if (log.find("ESC%CONNECT") != std::string::npos) {
                         pc.printf("%s\r\n", log.c_str());
                         status = Connect;
@@ -122,11 +138,11 @@ class Controller {
     }
 
     void flush_input() {
-        int flushCntr = 100;
+        int flushCntr = 50;
         while (flushCntr) {
             if (bt.readable()) {
                 bt.getc();
-                flushCntr = 100;
+                flushCntr = 50;
             }
             if (!bt.readable()) {
                 flushCntr--;
@@ -135,6 +151,7 @@ class Controller {
     }
 
     void cmdHandler(string cmd) {
+        pc.printf("%s\r\n", cmd.c_str());
         // Get Commands
         if (cmd == "gb") {
             gb();
@@ -156,9 +173,10 @@ class Controller {
 
     unsigned char prev_cmd = 0;
     void fpHandler() {
+        auto front = this->buffer.front();
+        max7219.show(front.first);
         // only trigger when release foot pedal
         if (prev_cmd && fp.CMD == 0) {
-            auto front = this->buffer.front();
             switch (prev_cmd) {
                 case 1: // short press
                     pc.printf("%s %d\r\n", front.first.c_str(), front.second);

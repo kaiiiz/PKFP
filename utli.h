@@ -1,6 +1,7 @@
 #include "mbed.h"
 #include <vector>
 #include <string>
+#include <unordered_map>
 
 enum BtProfile {
     SPP,
@@ -110,5 +111,141 @@ namespace mbed {
         }
         DigitalIn _fp;
         Ticker _tick;
+    };
+
+    class MAX7219 {
+       public:
+        MAX7219 (PinName DIN_PIN, PinName CS_PIN, PinName CLK_PIN): DIN(DIN_PIN), CS(CS_PIN), CLK(CLK_PIN) {
+            // DECODE_MODE
+            set_decode(0x00);
+            // INTENSITY
+            set_intensity(0xA);
+            // SCAN_LIMIT
+            set_scan_limit(7);
+            // SHUTDOWN
+            set_shutdown(0x1);
+            // DISPLAY_TEST
+            set_display_test(0x0);
+            // Clear All 7-Segment
+            for (int i = 1; i <= 8; i++) {
+                send(i, keymap[' ']);
+            }
+        }
+
+        void show(string keyname) {
+            int len = keyname.length();
+            set_scan_limit(len - 1);
+            for (int i = len, j = 0; i > 0; i--, j++) {
+                send(i, keymap[keyname[j]]);
+            }
+        }
+
+        void set_decode(int data) {
+            send(0x09, data);
+        }
+
+        void set_intensity(int data) {
+            send(0x0A, data);
+        }
+
+        void set_scan_limit(int data) {
+            send(0x0B, data);
+        }
+
+        void set_shutdown(int data) {
+            send(0x0C, data);
+        }
+
+        void set_display_test(int data) {
+            send(0x0F, data);
+        }
+
+        void send(int address, int data) {
+            int send = (address << 8) + data;
+            int mask;
+            for (int i = 16; i > 0; i--) {
+                mask = 1 << (i - 1);
+                CLK = 0;
+                if ((send & mask) == 0) {
+                    DIN = 0;
+                }
+                else {
+                    DIN = 1;
+                }
+                CLK = 1;
+            }
+            CS = 0;
+            CS = 1;
+        }
+
+       private:
+        DigitalOut DIN;
+        DigitalOut CS;
+        DigitalOut CLK;
+        std::unordered_map<char, int> keymap{
+            {'0', 0x7E},
+            {'1', 0x30},
+            {'2', 0x6D},
+            {'3', 0x79},
+            {'4', 0x33},
+            {'5', 0x5B},
+            {'6', 0x5F},
+            {'7', 0x70},
+            {'8', 0x7F},
+            {'9', 0x7B},
+            {' ', 0x00},
+            {'A', 0x77},
+            {'a', 0x7D},
+            {'B', 0x7F},
+            {'b', 0x1F},
+            {'C', 0x4E},
+            {'c', 0x0D},
+            {'D', 0x7E},
+            {'d', 0x3D},
+            {'E', 0x4F},
+            {'e', 0x6f},
+            {'F', 0x47},
+            {'f', 0x47},
+            {'G', 0x5E},
+            {'g', 0x7B},
+            {'H', 0x37},
+            {'h', 0x17},
+            {'I', 0x30},
+            {'i', 0x10},
+            {'J', 0x3C},
+            {'j', 0x38},
+            {'K', 0x37},
+            {'k', 0x17},
+            {'L', 0x0E},
+            {'l', 0x06},
+            {'M', 0x55},
+            {'m', 0x55},
+            {'N', 0x15},
+            {'n', 0x15},
+            {'O', 0x7E},
+            {'o', 0x1D},
+            {'P', 0x67},
+            {'p', 0x67},
+            {'Q', 0x73},
+            {'q', 0x73},
+            {'R', 0x77},
+            {'r', 0x05},
+            {'S', 0x5B},
+            {'s', 0x5B},
+            {'T', 0x46},
+            {'t', 0x0F},
+            {'U', 0x3E},
+            {'u', 0x1C},
+            {'V', 0x27},
+            {'v', 0x23},
+            {'W', 0x3F},
+            {'w', 0x2B},
+            {'X', 0x25},
+            {'x', 0x25},
+            {'Y', 0x3B},
+            {'y', 0x33},
+            {'Z', 0x6D},
+            {'z', 0x6D},
+        };
     };
 }
