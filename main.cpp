@@ -39,7 +39,7 @@ class Controller {
         keymap.insert(ascii_keymap.begin(), ascii_keymap.end());
         buffer.push_back(get_key("a"));
         buffer.push_back(get_key("b"));
-        buffer.push_back(get_key("Esc"));
+        buffer.push_back(get_key("c"));
     }
 
     void spp() {
@@ -194,6 +194,9 @@ class Controller {
         else if (cmd[0] == "insert" && cmd.size() == 3) {
             insert(cmd[1], cmd[2]);
         }
+        else if (cmd[0] == "replace" && cmd.size() == 3) {
+            replace(cmd[1], cmd[2]);
+        }
         // Get Commands
         else if (cmd[0] == "gb" && cmd.size() == 1) {
             gb();
@@ -326,6 +329,22 @@ class Controller {
         this->buffer.insert(this->buffer.begin() + idx, key);
         gb();
     }
+    void replace(std::string keyname, std::string keyid) {
+        for (char c : keyid) {
+            if (!std::isdigit(c)) {
+                bt.printf("Argument must be numeric!\r\n");
+                return;
+            }
+        }
+        int idx = stoi(keyid, nullptr, 10) - 1;
+        auto key = get_key(keyname);
+        if (key.second == -1) {
+            bt.printf("Unsupported key name!\r\n");
+            return;
+        }
+        this->buffer[idx] = key;
+        gb();
+    }
 
     // Get Commands
     void gb() {
@@ -362,6 +381,7 @@ class Controller {
         bt.printf("popb: pop key from back of buffer\r\n");
         bt.printf("del <key-id>: delete key in buffer using key-id\r\n");
         bt.printf("insert <key-name> <key-id>: insert key to position <key-id>\r\n");
+        bt.printf("replace <key-name> <key-id>: replace key from position <key-id>\r\n");
         bt.printf("\r\n");
         bt.printf("Get Commands:\r\n");
         bt.printf("gb: get current key buffer\r\n");
