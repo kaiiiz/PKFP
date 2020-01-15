@@ -115,6 +115,10 @@ class Controller {
                         status = Disconnect;
                         log.clear();
                     }
+                    if (modeSwitch(btn)) {
+                        max7219.show("unable");
+                        wait_us(1000000);
+                    }
                     this->fpHandler();
                     break;
                 case Disconnect:
