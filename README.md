@@ -1,4 +1,4 @@
-# PKFP
+# PKFP (Programmable Keyboard Foot Pedal)
 
 This is the final project of the NCTU Microprocessor System Lab in Fall 2019.
 
